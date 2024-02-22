@@ -44,6 +44,10 @@ class Environment:
                 image[y, x] = [1.0, 0, 0]
             elif state == 1:
                 image[y, x] = [0, 1.0, 0]
+            elif state == -2:
+                image[y, x] = [0.3, 0, 0]
+            elif state == 2:
+                image[y, x] = [0, 0.3, 0]
         return image
     
     # Checks whether a hypothetic move would be valid, supposing piece_type exists at init_position.
@@ -53,6 +57,7 @@ class Environment:
         if self.board[end_position] != 0:
             return False, None
         
+        valid = False
         jumped_piece = None        
         x1, y1 = self.coordinates(init_position)
         x2, y2 = self.coordinates(end_position)
@@ -86,12 +91,13 @@ class Environment:
                 piece_pos = None
 
                 for delta in range(1, diff):
+                    square = self.square_id((min_x + delta, min_y + delta))
                     # Enemy piece, only one accepted
-                    if self.board[self.square_id(min_x + delta, min_y + delta)] < 0:
+                    if self.board[square] < 0:
                         pieces_present += 1
-                        piece_pos = self.square_id(min_x + delta, max_y - delta)
+                        piece_pos = square
                     # Friendly piece, none accepted
-                    if self.board[self.square_id(min_x + delta, min_y + delta)] > 0:
+                    if self.board[square] > 0:
                         pieces_present += 2
 
                 # If taking, and in chain or first move, valid
@@ -107,18 +113,19 @@ class Environment:
             # Second diagonal
             if ((x1 - x2) == (y2 - y1)):
                 min_x = min(x1,x2)
-                max_y = min(y1,y2)
+                max_y = max(y1,y2)
                 diff = int(abs(x1 - x2))
                 pieces_present = 0
                 piece_pos = None
 
                 for delta in range(1, diff):
+                    square = self.square_id((min_x + delta, max_y - delta))
                     # Enemy piece, only one accepted
-                    if self.board[self.square_id(min_x + delta, max_y - delta)] < 0:
+                    if self.board[square] < 0:
                         pieces_present += 1
-                        piece_pos = self.square_id(min_x + delta, max_y - delta)
+                        piece_pos = square
                     # Friendly piece, none accepted
-                    if self.board[self.square_id(min_x + delta, max_y - delta)] > 0:
+                    if self.board[square] > 0:
                         pieces_present += 2
 
                 # If taking, and in chain or first move, valid
@@ -160,12 +167,13 @@ class Environment:
                 piece_pos = None
                 
                 for delta in range(1, diff):
+                    square = self.square_id((min_x + delta, min_y + delta))
                     # Enemy piece, only one accepted
-                    if self.board[self.square_id(min_x + delta, min_y + delta)] > 0:
+                    if self.board[square] > 0:
                         pieces_present += 1
-                        piece_pos = self.square_id(min_x + delta, max_y - delta)
+                        piece_pos = square
                     # Friendly piece, none accepted
-                    if self.board[self.square_id(min_x + delta, min_y + delta)] < 0:
+                    if self.board[square] < 0:
                         pieces_present += 2
 
                 # If taking, and, in chain or first move, valid
@@ -181,18 +189,19 @@ class Environment:
             # Second diagonal
             if ((x1 - x2) == (y2 - y1)):
                 min_x = min(x1,x2)
-                max_y = min(y1,y2)
+                max_y = max(y1,y2)
                 diff = int(abs(x1 - x2))
                 pieces_present = 0
                 piece_pos = None
 
                 for delta in range(1, diff):
+                    square = self.square_id((min_x + delta, max_y - delta))
                     # Enemy piece, only one accepted
-                    if self.board[self.square_id(min_x + delta, max_y - delta)] > 0:
+                    if self.board[square] > 0:
                         pieces_present += 1
-                        piece_pos = self.square_id(min_x + delta, max_y - delta)
+                        piece_pos = square
                     # Friendly piece, none accepted
-                    if self.board[self.square_id(min_x + delta, max_y - delta)] < 0:
+                    if self.board[square] < 0:
                         pieces_present += 2
 
                 # If taking, and in chain or first move, valid

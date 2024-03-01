@@ -4,9 +4,13 @@ class Environment:
     # Playing on black board spaces, the spaces are numbered from top to bottom, left to right.
     # Top left corner is white.
 
-    def __init__(self):
-        # International checkers rules except no maximum capture rule
-        self.side = 10
+    def __init__(self, side=10):
+        """
+        Initializes checker board based on international checkers rules.
+        Architecture is compatible with other side lengths.
+        """
+
+        self.side = side
         self.half = int(self.side / 2)
 
         # Number of usable squares
@@ -29,8 +33,10 @@ class Environment:
         x, y = coordinates
         return int((y * self.half) + (x // 2))
     
-    # Creates board image for easy matplotlib.pyplot.imshow
     def board_image(self):
+        """
+        Creates board image suitable for matplotlib.pyplot.imshow
+        """
         # White board
         image = np.ones((self.side, self.side, 3))
 
@@ -50,9 +56,12 @@ class Environment:
                 image[y, x] = [0, 0.3, 0]
         return image
     
-    # Checks whether a hypothetic move would be valid, supposing piece_type exists at init_position.
-    # This assumption allows us to reason on hypothetic move chains without messing the board.
+
     def is_valid(self, init_position, end_position, piece_type, already_jumped):
+        """
+        Checks whether a hypothetic move to end_position would be valid in a chain.
+        Assumes piece_type gets to init_position after taking all pieces in already_jumped.
+        """
         # Piece needs to land in empty spot
         if self.board[end_position] != 0:
             return False, None
@@ -219,11 +228,11 @@ class Environment:
             return False, None
         
         return valid, jumped_piece
-    
-    # A move may contain a certain amount of captures.
-    # We have to check the validity of the move, and execute it.
-    # Finally, we need to crown pieces when they reach the final row.    
+     
     def move(self, square_sequence):
+        """
+        Checks if a move is valid and executes it.
+        """
         start_position = square_sequence[0]
         start_state = self.board[start_position]
 
@@ -232,7 +241,7 @@ class Environment:
         
         possibilities = self.possible_moves(self.turn%2)
         paths, takes = zip(*possibilities)
-        print(paths, takes)
+
         if square_sequence not in paths:
             return "Invalid move"
         
@@ -263,6 +272,9 @@ class Environment:
         return "Valid move"
     
     def get_reverse(self):
+        """
+        Returns environment viewed from the opponents side.
+        """
         reverse = Environment()
         reverse.board = - self.board[::-1]
         return reverse

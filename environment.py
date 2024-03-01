@@ -63,7 +63,7 @@ class Environment:
         x2, y2 = self.coordinates(end_position)
 
         # White piece
-        if (self.turn == 0) and (piece_type == 1): 
+        if (self.turn%2 == 0) and (piece_type == 1): 
             # If move is first in the chain, one-diagonal, frontwards :
             # Basic move, valid
             if(self.board[init_position] == 1) and (y1 == y2 + 1) and (abs(x1 - x2) == 1):
@@ -80,7 +80,7 @@ class Environment:
                 jumped_piece = enemy_position
 
         # White queen
-        if (self.turn == 0) and (piece_type == 2):
+        if (self.turn%2 == 0) and (piece_type == 2):
             # Queen move
             # First diagonal
             if ((x1 - x2) == (y1 - y2)):
@@ -139,7 +139,7 @@ class Environment:
                     valid = False
 
         # Black piece
-        if (self.turn == 1) and (piece_type == -1): 
+        if (self.turn%2 == 1) and (piece_type == -1): 
             # If move is first in the chain, one-diagonal, frontwards :
             # Basic move, valid
             if(self.board[init_position] == -1) and (y1 == y2 - 1) and (abs(x1 - x2) == 1):
@@ -156,7 +156,7 @@ class Environment:
                 jumped_piece = enemy_position
 
         # Black queen
-        if (self.turn == 1) and (piece_type == -2):
+        if (self.turn%2 == 1) and (piece_type == -2):
             # Queen move
             # First diagonal
             if ((x1 - x2) == (y1 - y2)):
@@ -230,15 +230,14 @@ class Environment:
         if start_state == 0:
             return "Invalid move"
         
-        jumped = [] # List of jumped enemies
-        for move_id in range(len(square_sequence) - 1):
-            init_position = square_sequence[move_id]
-            end_position = square_sequence[move_id + 1]
-            valid, jumped_enemy = self.is_valid(init_position, end_position, start_state, jumped)
-            if not valid:
-                return "Invalid move"
-            if jumped_enemy is not None:
-                jumped.append(jumped_enemy)
+        possibilities = self.possible_moves(self.turn%2)
+        paths, takes = zip(*possibilities)
+        print(paths, takes)
+        if square_sequence not in paths:
+            return "Invalid move"
+        
+        path_id = paths.index(square_sequence)
+        jumped = takes[path_id]
         
         # Place piece at the last square of the move
         self.board[square_sequence[-1]] = start_state
@@ -259,6 +258,83 @@ class Environment:
                 self.board[square] = -2    
 
         # Next turn
-        self.turn = 1 - self.turn
+        self.turn = self.turn + 1
 
         return "Valid move"
+    
+    def get_reverse(self):
+        reverse = Environment()
+        reverse.board = - self.board[::-1]
+        return reverse
+    
+    def possible_moves(self, player):
+        """
+        Outputs list of tuples (path, takes) corresponding to the moves taking the maximum amount of pieces.
+        (Cf. international checkers rules)
+        - Player : 0 = white, 1 = black. 
+        Note : turn % 2 = player.
+        """
+        if player == 1:
+            opposite_moves = self.get_reverse().possible_moves(0)
+            return [([self.size - 1 - i for i in move], [self.size - 1 - i for i in takes]) for move, takes in opposite_moves]
+        
+        path_queue = []
+        possible_moves = [] 
+        # List of moves that are physically possible on board
+
+        for i in range(len(self.board)):
+            if(self.board[i] > 0):
+                path_queue.append(([i], []))
+                # Path queue contains (path, pieces_taken) tuples.
+        
+        while len(path_queue):
+            path, already_jumped = path_queue.pop()
+            current_tile = path[-1]
+            x, y = self.coordinates(current_tile)
+
+            for x2 in range(0, self.side):
+                if x2 != x:
+                    # Try first diagonal move
+                    y2 = y + x2 - x
+                    if 0 <= y2 and y2 < self.side:
+                        potential_tile = self.square_id((x2, y2))
+                        piece_type = self.board[path[0]] 
+                        # The piece stays at the beginning of the path until the move is done
+
+                        valid, piece_taken = self.is_valid(current_tile, potential_tile, piece_type, already_jumped)
+                        if valid:
+                            new_path = path + [potential_tile]
+
+                            if piece_taken is not None:
+                                new_jumped_pieces = already_jumped + [piece_taken]
+                                path_queue.append((new_path, new_jumped_pieces))
+                                # If a piece is taken, longer move is possible
+
+                            else:
+                                new_jumped_pieces = already_jumped
+                            possible_moves.append((new_path, new_jumped_pieces))
+
+                    # Try second diagonal move
+                    y2 = y + x - x2
+                    if 0 <= y2 and y2 < self.side:
+                        potential_tile = self.square_id((x2, y2))
+                        piece_type = self.board[path[0]] 
+                        # The piece stays at the beginning of the path until the move is done
+
+                        valid, piece_taken = self.is_valid(current_tile, potential_tile, piece_type, already_jumped)
+                        if valid:
+                            new_path = path + [potential_tile]
+
+                            if piece_taken is not None:
+                                new_jumped_pieces = already_jumped + [piece_taken]
+                                path_queue.append((new_path, new_jumped_pieces))
+                                # If a piece is taken, longer move is possible
+
+                            else:
+                                new_jumped_pieces = already_jumped
+                            possible_moves.append((new_path, new_jumped_pieces))
+        
+        max_pieces_taken = max([len(takes) for path, takes in possible_moves])
+        valid_moves = [(p, takes) for p, takes in possible_moves if len(takes) == max_pieces_taken]
+
+        return valid_moves

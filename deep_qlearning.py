@@ -2,11 +2,17 @@ import environment as env
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from PIL import Image, ImageDraw
 
 def show_board(envi):
     plt.figure()
     plt.imshow(envi.board_image())
-    plt.show()
+    
+    plt_img = plt.gcf()
+    plt_img.canvas.draw()
+    pil_img = Image.frombytes('RGB', plt_img.canvas.get_width_height(), plt_img.canvas.tostring_rgb())
+    return pil_img
+    
 
 winning_reward = 1000
 
@@ -36,11 +42,6 @@ def get_metrics(envi, player):
     kings = kings1-kings2
     score = men + 3*kings
     return score
-
-envi = env.Environment()
-
-state_dim = envi.size
-action_dim = envi.size**2
 
 class QNetwork(torch.nn.Module):
     """
@@ -118,14 +119,12 @@ def qvalues_to_best_possible_move(envi, q_values, player):
 
     return [action // envi.size, action % envi.size]
 
-def test_q_network_agent(env, q_network: torch.nn.Module, num_episode: int = 1, render: bool = True):
+def test_q_network_agent(side, q_network: torch.nn.Module, num_episode: int = 1, render: bool = True):
     """
     Test a naive agent in the given environment using the provided Q-network.
 
     Parameters
     ----------
-    env : gym.Env
-        The environment in which to test the agent.
     q_network : torch.nn.Module
         The Q-network to use for decision making.
     num_episode : int, optional
@@ -142,12 +141,14 @@ def test_q_network_agent(env, q_network: torch.nn.Module, num_episode: int = 1, 
 
     for episode_id in range(num_episode):
 
-        envi = env.Environment()
+        envi = env.Environment(side=side)
         state = envi.board
         done = False
         episode_reward = 0
         player = 0
         action = None
+        
+        images = []
 
         while not done:
             if render and action is not None:
@@ -169,9 +170,16 @@ def test_q_network_agent(env, q_network: torch.nn.Module, num_episode: int = 1, 
             player = 1 - player
             
             episode_reward += reward
+            
+            images.append(show_board(envi))
+            
+            # Create a GIF from the images
+            images[0].save(f'episode_{episode_id}.gif',
+                save_all=True, append_images=images[1:], optimize=False, duration=1000, loop=0)
 
         episode_reward_list.append(episode_reward)
         print(f"Episode reward: {episode_reward}")
+        
 
     return episode_reward_list
 
@@ -182,9 +190,12 @@ for move in moves:
     envi.move(move)
     print(get_metrics(envi, player))
     player = 1-player"""
-     
+
+side = 10 
+size = int(side**2/2) # The size of the board
+move_length = 2 # The length of a move. We do not consider longer moves for now
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-q_network = QNetwork(state_dim, action_dim, nn_l1=128, nn_l2=128).to(device)
+q_network = QNetwork(size, size**move_length, nn_l1=128, nn_l2=128).to(device)
 
-test_q_network_agent(env, q_network, num_episode=5)
+test_q_network_agent(side, q_network, num_episode=5)

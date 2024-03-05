@@ -1,3 +1,7 @@
+# .gif files of the game
+*.gif
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

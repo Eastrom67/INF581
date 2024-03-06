@@ -3,7 +3,8 @@
 
 # ignore the test.py
 test.py
-
+main.py
+temp_gif/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

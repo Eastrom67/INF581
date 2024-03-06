@@ -32,15 +32,14 @@ class MinimaxAgent(Agent):
             boards[i].move(moves[i])
 
         if depth == self.nb_future:
-            scores = [self.board_score(b) for b in boards]
+            scores = [1000 if b.is_final() else self.board_score(b) for b in boards]
 
         else:
-            scores = [self.minimax(board, depth + 1)[1] for board in boards]
+            boards = [b.transpose() for b in boards]
+            scores = [1000 if b.is_final() else -self.minimax(b, depth + 1)[1] for b in boards]
 
-        if depth %2 == 0:
-            best = np.argmax(scores)
-        else:
-            best = np.argmin(scores)
+        best = np.argmax(scores)
+
         return moves[best], scores[best]
 
     def board_score(self, board : Board):
@@ -61,12 +60,6 @@ class MinimaxAgent(Agent):
             if tile == 2:
                 white_queens += 1
 
-        potential_moves_white = len(board.get_allowed_moves())
-
-        board.transpose()
-        potential_moves_black = len(board.get_allowed_moves())
-        board.transpose()
-
-        score = white_pieces + 5 * white_queens - black_pieces - 5 * black_queens + potential_moves_white - potential_moves_black
+        score = white_pieces + 5 * white_queens - black_pieces - 5 * black_queens
         
         return score

@@ -2,6 +2,7 @@ from abstract_agent import Agent
 from environment import Environment
 from board import Board
 import matplotlib.pyplot as plt
+import numpy as np
 import os
 import imageio
 import shutil
@@ -21,6 +22,8 @@ class GameRunner():
         shutil.rmtree('temp_gif')
 
     def run(self, agent_A, agent_B):
+        if np.random.rand() < 0.5:
+            agent_A, agent_B = agent_B, agent_A
         board = Board()
         t = 0
         while True:

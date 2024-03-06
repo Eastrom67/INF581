@@ -167,7 +167,7 @@ class Board:
             self.board[piece] = 0 # removing the piece
         if end < self.half: # if we reached the end of the board
             self.board[end] = 2 # crowning the piece
-        return self.board
+        return "Move done."
     
     def get_image(self):
         """

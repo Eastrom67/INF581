@@ -1,13 +1,13 @@
 from abstract_agent import Agent
-from simple_agent import DecisionTreeAgent
+from minimax_agent import MinimaxAgent
 from environment import Environment
 from board import Board
 from game_runner import GameRunner
 
 gr = GameRunner()
 
-agent_A = DecisionTreeAgent(nb_future=1)
-agent_B = DecisionTreeAgent(nb_future=2)
+agent_A = Agent()
+agent_B = MinimaxAgent(nb_future=0)
 
 # gr.run_and_show(agent_A, agent_B, console = True, gif = True)
 

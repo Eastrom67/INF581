@@ -1,37 +1,44 @@
-import environment as env
+from board import Board
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
 import torch
+from torch.optim.lr_scheduler import _LRScheduler
 from PIL import Image, ImageDraw
+import itertools
+import pandas as pd
+import random
+from typing import List, Tuple, Deque, Optional, Callable
+
+
 
 def show_board(envi):
     plt.figure()
-    plt.imshow(envi.board_image())
+    plt.imshow(envi.get_image())
     
     plt_img = plt.gcf()
     plt_img.canvas.draw()
     pil_img = Image.frombytes('RGB', plt_img.canvas.get_width_height(), plt_img.canvas.tostring_rgb())
-    return pil_img
+    plt.close()
     
+    return pil_img
 
-winning_reward = 1000
 
-def get_metrics(envi, player):
+
+winning_reward = 500
+
+
+
+def board_metric(envi):
     """
     Simple evaluation function for the checkers game.
     """
     b = envi.board
     
-    if player == 0:
-        men1 = np.sum((b==1))
-        men2 = np.sum((b==-1))
-        kings1 = np.sum((b==2))
-        kings2 = np.sum((b==-2))
-    else:
-        men1 = np.sum((b==-1))
-        men2 = np.sum((b==1))
-        kings1 = np.sum((b==-2))
-        kings2 = np.sum((b==2))
+    men1 = np.sum((b==1))
+    men2 = np.sum((b==-1))
+    kings1 = np.sum((b==2))
+    kings2 = np.sum((b==-2))
     
     if men2+kings2 == 0:
         return winning_reward
@@ -40,8 +47,23 @@ def get_metrics(envi, player):
         
     men = men1-men2
     kings = kings1-kings2
-    score = men + 3*kings
+    score = men + 10*kings
+    
     return score
+
+
+
+def state_to_first_layer(state):
+    output = np.zeros(5*len(state))
+    for i in range(len(state)):
+        output[5*i] = (state[i]==0)
+        output[5*i+1] = (state[i]==1)
+        output[5*i+2] = (state[i]==-1)
+        output[5*i+3] = (state[i]==2)
+        output[5*i+4] = (state[i]==-2)
+    return output
+
+
 
 class QNetwork(torch.nn.Module):
     """
@@ -103,99 +125,342 @@ class QNetwork(torch.nn.Module):
 
         return x
 
-def qvalues_to_best_possible_move(envi, q_values, player):
+
+
+class EpsilonGreedy:
+
+    def __init__(self,
+                 epsilon_start: float,
+                 epsilon_min: float,
+                 epsilon_decay:float,
+                 env: Board,
+                 q_network: torch.nn.Module):
+        """
+        Initialize a new instance of EpsilonGreedy.
+
+        Parameters
+        ----------
+        epsilon_start : float
+            The initial probability of choosing a random action.
+        epsilon_min : float
+            The minimum probability of choosing a random action.
+        epsilon_decay : float
+            The decay rate for the epsilon value after each episode.
+        env : gym.Env
+            The environment in which the agent is acting.
+        q_network : torch.nn.Module
+            The Q-Network used to estimate action values.
+        """
+        self.epsilon = epsilon_start
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
+        self.env = env
+        self.q_network = q_network
+
+    def __call__(self, state: np.ndarray) -> np.int64:
+        """
+        Select an action for the given state using the epsilon-greedy policy.
+
+        If a randomly chosen number is less than epsilon, a random action is chosen.
+        Otherwise, the action with the highest estimated action value is chosen.
+
+        Parameters
+        ----------
+        state : np.ndarray
+            The current state of the environment.
+
+        Returns
+        -------
+        np.int64
+            The chosen action.
+        """
+
+        # TODO...
+        real = np.random.rand()
+        if real<1-self.epsilon:
+            q_values = self.q_network(torch.tensor(state_to_first_layer(state), dtype=torch.float32, device=device).unsqueeze(0))
+            action = qvalues_to_best_possible_move(self.env, q_values)
+           
+        else:
+            action = random.choice(self.env.get_allowed_moves())
+
+        return action
+
+    def decay_epsilon(self):
+        """
+        Decay the epsilon value after each episode.
+
+        The new epsilon value is the maximum of `epsilon_min` and the product of the current
+        epsilon value and `epsilon_decay`.
+        """
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
+
+
+
+class MinimumExponentialLR(torch.optim.lr_scheduler.ExponentialLR):
+    def __init__(self, optimizer: torch.optim.Optimizer, lr_decay: float, last_epoch: int = -1, min_lr: float = 1e-6):
+        """
+        Initialize a new instance of MinimumExponentialLR.
+
+        Parameters
+        ----------
+        optimizer : torch.optim.Optimizer
+            The optimizer whose learning rate should be scheduled.
+        lr_decay : float
+            The multiplicative factor of learning rate decay.
+        last_epoch : int, optional
+            The index of the last epoch. Default is -1.
+        min_lr : float, optional
+            The minimum learning rate. Default is 1e-6.
+        """
+        self.min_lr = min_lr
+        super().__init__(optimizer, lr_decay, last_epoch=-1)
+
+    def get_lr(self):
+        """
+        Compute learning rate using chainable form of the scheduler.
+
+        Returns
+        -------
+        List[float]
+            The learning rates of each parameter group.
+        """
+        return [
+            max(base_lr * self.gamma ** self.last_epoch, self.min_lr)
+            for base_lr in self.base_lrs
+        ]
+
+
+
+def qvalues_to_best_possible_move(envi, q_values):
     """
     Convert the Q-values to the best possible move.
     """
     
-    possible_moves = [possible_move[0] for possible_move in envi.possible_moves(player)]
-    possible_moves = list(set([move[0]*envi.size+move[1] for move in possible_moves]))
+    allowed_moves = envi.get_allowed_moves()
     
     q_values = q_values.detach().cpu().numpy()[0]
-    action = possible_moves[0]
-    for possible_move in possible_moves:
-        if q_values[possible_move] > q_values[action]:
-            action = possible_move
+    
+    action = allowed_moves[0][0]
+    jumped = allowed_moves[0][1]
+    for i in range(len(allowed_moves)):
+        if q_values[allowed_moves[i][0][0]*envi.size+allowed_moves[i][0][1]] > q_values[action[0]*envi.size+action[1]]:
+            action = allowed_moves[i][0]
+            jumped = allowed_moves[i][1]
 
-    return [action // envi.size, action % envi.size]
+    return (action, jumped)
 
-def test_q_network_agent(side, q_network: torch.nn.Module, num_episode: int = 1, render: bool = True):
-    """
-    Test a naive agent in the given environment using the provided Q-network.
 
-    Parameters
-    ----------
-    q_network : torch.nn.Module
-        The Q-network to use for decision making.
-    num_episode : int, optional
-        The number of episodes to run, by default 1.
-    render : bool, optional
-        Whether to render the environment, by default True.
 
-    Returns
-    -------
-    List[int]
-        A list of rewards per episode.
-    """
-    episode_reward_list = []
+def train_naive_agent(envi: Board,
+                      q_network: torch.nn.Module,
+                      optimizer: torch.optim.Optimizer,
+                      loss_fn: Callable,
+                      device: torch.device,
+                      lr_scheduler: _LRScheduler,
+                      epsilon_greedy: EpsilonGreedy,
+                      num_episodes: int,
+                      gamma: float,
+                      render = True) -> List[float]:
+    
+    episode_reward_dict = {0: [], 1: []}
+
+    for episode_index in range(1, num_episodes):
+        print(f"Episode {episode_index}/{num_episodes}")
+        
+        envi.reset()
+        state = envi.board
+        done = False
+        episode_reward = [0, 0]
+        player = 0
+        action = None
+        
+        images = []
+
+        for t in itertools.count():
+            
+            #print(f"Player {player} move")
+            
+            action = epsilon_greedy.__call__(state)
+            #print(f"Action: {action}")
+            envi.move(action)
+            
+            reward = board_metric(envi)
+            episode_reward[player] += reward
+            #print(f"Episode counting reward: {episode_reward}")
+            
+            envi.transpose()
+            sprime = envi.board
+            player = 1 - player
+            done = envi.is_final()
+            
+            predictions = q_network(torch.tensor(state_to_first_layer(state), dtype=torch.float32, device=device).unsqueeze(0))[0]
+            prediction = predictions[action[0][0]*envi.size+action[0][1]]
+            
+            future_predictions = q_network(torch.tensor(state_to_first_layer(sprime), dtype=torch.float32, device=device).unsqueeze(0))[0]
+            future_predictions = future_predictions.detach().cpu().numpy()
+            
+            future_prediction = future_predictions[0]
+            allowed_moves = envi.get_allowed_moves()
+            for allowed_move in allowed_moves:
+                if future_predictions[allowed_move[0][0]*envi.size+allowed_move[0][1]] > future_prediction:
+                    future_prediction = future_predictions[allowed_move[0][0]*envi.size+allowed_move[0][1]] 
+            target = reward + gamma * future_prediction
+            target = torch.tensor(target, dtype=torch.float32, device=device)
+            loss = loss_fn(prediction, target)
+            
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            lr_scheduler.step()
+            
+            state = sprime
+            
+            if render:
+                if player==0:
+                    images.append(show_board(envi))
+                else:
+                    envi.transpose()
+                    images.append(show_board(envi))
+                    envi.transpose()
+            
+            if done:
+                break
+        
+        episode_reward_dict[0].append(episode_reward[0])
+        episode_reward_dict[1].append(episode_reward[1])
+        epsilon_greedy.decay_epsilon()
+        # Create a GIF from the images
+        if render:
+            images[0].save(f'train_episode_{episode_index}.gif',
+                save_all=True, append_images=images[1:], optimize=False, duration=500, loop=0)
+    
+    return episode_reward_dict
+
+
+
+def test_q_network_agent(envi, q_network: torch.nn.Module, num_episode: int = 1, render: bool = True):
+    
+    episode_reward_dict = {0: [], 1: []}
 
     for episode_id in range(num_episode):
 
-        envi = env.Environment(side=side)
+        envi.reset()
         state = envi.board
         done = False
-        episode_reward = 0
+        episode_reward = [0, 0]
         player = 0
         action = None
         
         images = []
 
         while not done:
-            if render and action is not None:
-                print(f"Action: {action}")
-                print(f'State: {state}')
-                print(f"Episode counting reward: {episode_reward}")
-                print()
-                print(f"Player {player} move")
             
-            state_tensor = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-
+            state_tensor = torch.tensor(state_to_first_layer(state), dtype=torch.float32, device=device).unsqueeze(0)
             q_values = q_network(state_tensor)
-            
-            action = qvalues_to_best_possible_move(envi, q_values, player)
+            action = qvalues_to_best_possible_move(envi, q_values)
+
             envi.move(action)
-            reward = get_metrics(envi, player)
-            state = envi.board
-            done = np.abs(reward) == winning_reward
+            
+            reward = board_metric(envi)
+            episode_reward[player] += reward
+            
+            envi.transpose()
             player = 1 - player
             
-            episode_reward += reward
+            state = envi.board
+            done = envi.is_final()
             
-            images.append(show_board(envi))
+            if player==0:
+                images.append(show_board(envi))
+            else:
+                envi.transpose()
+                images.append(show_board(envi))
+                envi.transpose()
             
-            # Create a GIF from the images
-            images[0].save(f'episode_{episode_id}.gif',
-                save_all=True, append_images=images[1:], optimize=False, duration=1000, loop=0)
+        # Create a GIF from the images
+        images[0].save(f'test_episode_{episode_id}.gif',
+            save_all=True, append_images=images[1:], optimize=False, duration=500, loop=0)
 
-        episode_reward_list.append(episode_reward)
-        print(f"Episode reward: {episode_reward}")
-        
+        episode_reward_dict[0].append(episode_reward[0])
+        episode_reward_dict[1].append(episode_reward[1])
 
-    return episode_reward_list
+    return episode_reward_dict
 
-"""
-moves = [[30,26],[15,20],[26,15]]
-player = 0
-for move in moves:
-    envi.move(move)
-    print(get_metrics(envi, player))
-    player = 1-player"""
 
-side = 10 
+
+side = 10
 size = int(side**2/2) # The size of the board
 move_length = 2 # The length of a move. We do not consider longer moves for now
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-q_network = QNetwork(size, size**move_length, nn_l1=128, nn_l2=128).to(device)
 
-test_q_network_agent(side, q_network, num_episode=5)
+NUMBER_OF_TRAININGS = 1
+trains_result_dict = {0: [[], [], []], 1: [[], [], []]}
+
+envi = Board(side=side)
+
+for train_index in range(NUMBER_OF_TRAININGS):
+
+    # Instantiate required objects
+
+    q_network = QNetwork(5*size, size**move_length, nn_l1=128, nn_l2=128).to(device)
+    optimizer = torch.optim.AdamW(q_network.parameters(), lr=0.004, amsgrad=True)
+    #lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999)
+    lr_scheduler = MinimumExponentialLR(optimizer, lr_decay=0.97, min_lr=0.0001)
+    loss_fn = torch.nn.MSELoss()
+    epsilon_greedy = EpsilonGreedy(epsilon_start=0.82, epsilon_min=0.013, epsilon_decay=0.9675, env=envi, q_network=q_network)
+
+    # Train the q-network
+    episode_reward_dict = train_naive_agent(envi,
+                                            q_network,
+                                            optimizer,
+                                            loss_fn,
+                                            device,
+                                            lr_scheduler,
+                                            epsilon_greedy,
+                                            num_episodes=1000,
+                                            gamma=0.9,
+                                            render=False)
+    
+    trains_result_dict[0][0].extend(range(len(episode_reward_dict[0])))
+    trains_result_dict[0][1].extend(episode_reward_dict[0])
+    trains_result_dict[0][2].extend([train_index for _ in episode_reward_dict[0]])
+    
+    trains_result_dict[1][0].extend(range(len(episode_reward_dict[1])))
+    trains_result_dict[1][1].extend(episode_reward_dict[1])
+    trains_result_dict[1][2].extend([train_index for _ in episode_reward_dict[1]])
+
+trains_result_df = []
+trains_result_df.append(pd.DataFrame(np.array(trains_result_dict[0]).T, columns=["num_episodes", "mean_final_episode_reward", "training_index"]))
+trains_result_df.append(pd.DataFrame(np.array(trains_result_dict[1]).T, columns=["num_episodes", "mean_final_episode_reward", "training_index"]))
+
+# Save naive_trains_result_df[0] and [1] to csv
+trains_result_df[0].to_csv('naive_trains_result_0.csv', index=False, sep=';')
+trains_result_df[1].to_csv('naive_trains_result_1.csv', index=False, sep=';')
+
+plt.figure()
+plt.plot(trains_result_df[0]["num_episodes"], trains_result_df[0]["mean_final_episode_reward"])
+plt.savefig("training_player0.pdf")
+plt.close()
+plt.figure()
+plt.plot(trains_result_df[1]["num_episodes"], trains_result_df[1]["mean_final_episode_reward"])
+plt.savefig("training_player1.pdf")
+plt.close()
+
+# Save the action-value estimation function of the last train
+
+torch.save(q_network, "naive_q_network.pth")
+
+"""
+# TESTING THE AGENT
+q_network = QNetwork(5*size, size**move_length, nn_l1=128, nn_l2=128).to(device)
+
+test_q_network_agent(envi, q_network, num_episode=5)
+"""
+
+q_network = torch.load("naive_q_network.pth").to(device)
+
+envi = Board(side=side)
+
+test_q_network_agent(envi, q_network, num_episode=1, render=True)

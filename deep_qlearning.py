@@ -66,59 +66,14 @@ def state_to_first_layer(state):
 
 
 class QNetwork(torch.nn.Module):
-    """
-    A Q-Network implemented with PyTorch.
-
-    Attributes
-    ----------
-    layer1 : torch.nn.Linear
-        First fully connected layer.
-    layer2 : torch.nn.Linear
-        Second fully connected layer.
-    layer3 : torch.nn.Linear
-        Third fully connected layer.
-
-    Methods
-    -------
-    forward(x: torch.Tensor) -> torch.Tensor
-        Define the forward pass of the QNetwork.
-    """
 
     def __init__(self, n_observations: int, n_actions: int, nn_l1: int, nn_l2: int):
-        """
-        Initialize a new instance of QNetwork.
-
-        Parameters
-        ----------
-        n_observations : int
-            The size of the observation space.
-        n_actions : int
-            The size of the action space.
-        nn_l1 : int
-            The number of neurons on the first layer.
-        nn_l2 : int
-            The number of neurons on the second layer.
-        """
         super(QNetwork, self).__init__()
         self.layer1 = torch.nn.Linear(n_observations, nn_l1)
         self.layer2 = torch.nn.Linear(nn_l1, nn_l2)
         self.layer3 = torch.nn.Linear(nn_l2, n_actions)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Define the forward pass of the QNetwork.
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            The input tensor (state).
-
-        Returns
-        -------
-        torch.Tensor
-            The output tensor (Q-values).
-        """
-
         x = torch.nn.functional.relu(self.layer1(x))
         x = torch.nn.functional.relu(self.layer2(x))
         x = self.layer3(x)
@@ -135,22 +90,7 @@ class EpsilonGreedy:
                  epsilon_decay:float,
                  env: Board,
                  q_network: torch.nn.Module):
-        """
-        Initialize a new instance of EpsilonGreedy.
-
-        Parameters
-        ----------
-        epsilon_start : float
-            The initial probability of choosing a random action.
-        epsilon_min : float
-            The minimum probability of choosing a random action.
-        epsilon_decay : float
-            The decay rate for the epsilon value after each episode.
-        env : gym.Env
-            The environment in which the agent is acting.
-        q_network : torch.nn.Module
-            The Q-Network used to estimate action values.
-        """
+        
         self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
@@ -158,24 +98,7 @@ class EpsilonGreedy:
         self.q_network = q_network
 
     def __call__(self, state: np.ndarray) -> np.int64:
-        """
-        Select an action for the given state using the epsilon-greedy policy.
-
-        If a randomly chosen number is less than epsilon, a random action is chosen.
-        Otherwise, the action with the highest estimated action value is chosen.
-
-        Parameters
-        ----------
-        state : np.ndarray
-            The current state of the environment.
-
-        Returns
-        -------
-        np.int64
-            The chosen action.
-        """
-
-        # TODO...
+        
         real = np.random.rand()
         if real<1-self.epsilon:
             q_values = self.q_network(torch.tensor(state_to_first_layer(state), dtype=torch.float32, device=device).unsqueeze(0))
@@ -187,44 +110,19 @@ class EpsilonGreedy:
         return action
 
     def decay_epsilon(self):
-        """
-        Decay the epsilon value after each episode.
-
-        The new epsilon value is the maximum of `epsilon_min` and the product of the current
-        epsilon value and `epsilon_decay`.
-        """
+        
         self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)
 
 
 
 class MinimumExponentialLR(torch.optim.lr_scheduler.ExponentialLR):
     def __init__(self, optimizer: torch.optim.Optimizer, lr_decay: float, last_epoch: int = -1, min_lr: float = 1e-6):
-        """
-        Initialize a new instance of MinimumExponentialLR.
-
-        Parameters
-        ----------
-        optimizer : torch.optim.Optimizer
-            The optimizer whose learning rate should be scheduled.
-        lr_decay : float
-            The multiplicative factor of learning rate decay.
-        last_epoch : int, optional
-            The index of the last epoch. Default is -1.
-        min_lr : float, optional
-            The minimum learning rate. Default is 1e-6.
-        """
+        
         self.min_lr = min_lr
         super().__init__(optimizer, lr_decay, last_epoch=-1)
 
     def get_lr(self):
-        """
-        Compute learning rate using chainable form of the scheduler.
-
-        Returns
-        -------
-        List[float]
-            The learning rates of each parameter group.
-        """
+        
         return [
             max(base_lr * self.gamma ** self.last_epoch, self.min_lr)
             for base_lr in self.base_lrs
@@ -448,17 +346,10 @@ plt.plot(trains_result_df[1]["num_episodes"], trains_result_df[1]["mean_final_ep
 plt.savefig("training_player1.pdf")
 plt.close()
 
-# Save the action-value estimation function of the last train
-
 torch.save(q_network, "naive_q_network.pth")
 
-"""
-# TESTING THE AGENT
-q_network = QNetwork(5*size, size**move_length, nn_l1=128, nn_l2=128).to(device)
 
-test_q_network_agent(envi, q_network, num_episode=5)
-"""
-
+# TESTING THE AGENT (against itself...)
 q_network = torch.load("naive_q_network.pth").to(device)
 
 envi = Board(side=side)

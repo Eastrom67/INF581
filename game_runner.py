@@ -22,31 +22,35 @@ class GameRunner():
         shutil.rmtree('temp_gif')
 
     def run(self, agent_A, agent_B):
-        swap = False
         if np.random.rand() < 0.5:
-            swap = True
-            agent_A, agent_B = agent_B, agent_A
+            white = agent_A
+            black = agent_B
+            players = {'white': 'A', 'black': 'B'}
+        else:
+            white = agent_B
+            black = agent_A
+            players = {'white': 'B', 'black': 'A'}
+
         board = Board()
         t = 0
         while True:
             t+=1
-            # Player A
+            # White
             if board.is_final():
-                if swap:
-                    return ('A',t)
-                else:
-                    return ('B',t)
-            move_A = agent_A.move(board)
-            board.move(move_A)
-            # Player B
+                return (players['black'],t)
+            move_white = white.move(board)
+            board.move(move_white)
+
+            # Transpose the board
             board.transpose()
+
+            # Black
             if board.is_final():
-                if swap:
-                    return ('B',t)
-                else:
-                    return ('A',t)
-            move_B = agent_B.move(board)
-            board.move(move_B)
+                return (players['white'],t)
+            move_black = black.move(board)
+            board.move(move_black)
+
+            # Transpose the board
             board.transpose()
 
 

@@ -1,6 +1,9 @@
 # .gif files of the game
 *.gif
 
+# ignore the test.py
+test.py
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

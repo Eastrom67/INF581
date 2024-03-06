@@ -26,6 +26,16 @@ class Board:
         self.board[:nb_pieces] -= 1
         self.board[-nb_pieces:] += 1
 
+    def reset(self):
+        """
+        Resets the board to its initial state.
+        """
+        nb_pieces = 2 * self.side
+        self.board = np.array([0 for i in range(self.size)]) 
+        self.board[:nb_pieces] -= 1
+        self.board[-nb_pieces:] += 1
+        return self
+
     def transpose(self):
         """
         Transposes the board.

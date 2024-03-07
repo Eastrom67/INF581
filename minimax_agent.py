@@ -22,10 +22,10 @@ class MinimaxAgent(Agent):
         Method that returns the move of the agent.
         Implements the minimax algorithm.
         """
-        move, _ = self.minimax(board, 0)
+        move, _ = self.minimax(board, 0, -np.inf, np.inf)
         return move
 
-    def minimax(self, board : Board, depth : int):
+    def minimax(self, board : Board, depth : int, alpha, beta):
         moves = board.get_allowed_moves()
         boards = [copy.deepcopy(board) for move in moves]
         for i in range(len(boards)):
@@ -36,7 +36,11 @@ class MinimaxAgent(Agent):
 
         else:
             boards = [b.transpose() for b in boards]
-            scores = [1000 if b.is_final() else -self.minimax(b, depth + 1)[1] for b in boards]
+            scores = []
+            for b in boards:
+                scores.append(1000 if b.is_final() else -self.minimax(b, depth + 1, -beta, -alpha)[1])
+                if scores[-1] >= beta:
+                    break
 
         best = np.argmax(scores)
 

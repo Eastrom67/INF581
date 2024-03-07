@@ -24,6 +24,6 @@ def basic_score(board : Board):
         potential_moves_black = len(board.get_allowed_moves())
         board.transpose()
 
-        score = white_pieces + 5 * white_queens - black_pieces - 5 * black_queens + potential_moves_white - potential_moves_black
+        score = white_pieces + 5 * white_queens - black_pieces - 5 * black_queens
         
         return score

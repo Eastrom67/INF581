@@ -70,7 +70,8 @@ class DeepQAgent(Agent):
         """
         for g in range(n_games):
             board = Board()
-
+            total_loss = 0
+            n_grad = 0
             while True:
 
                 # Check if the game is over
@@ -102,12 +103,14 @@ class DeepQAgent(Agent):
 
                     # Compute the loss
                     loss = loss_fn(q_value, target)
+                    total_loss += loss
 
                     # Backpropagation
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
                     lr_scheduler.step()
+                    n_grad += 1
 
                     # Go to the next game
                     break
@@ -119,19 +122,91 @@ class DeepQAgent(Agent):
                     next_q_value = self.q_network(next_state_tensor)
 
                     # Adversary plays
-                    board.move(action_adversary)
-                    board.transpose()
+                    #board.move(action_adversary)
+                    #board.transpose()
 
                     # Compute the target
                     target = reward + gamma * next_q_value
 
                     # Compute the loss
                     loss = loss_fn(q_value, target)
+                    total_loss += loss
 
                     # Backpropagation
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
                     lr_scheduler.step()
+                    n_grad += 1
+
+        total_loss /= n_grad
+        print(f'Loss: {total_loss}')
+        print(f'Epsilon final: {epsilon_scheduler.epsilon}')
+
+
+    def train_final_reward(
+            self,
+            n_games: int,
+            gamma: float,
+            epsilon_scheduler: EpsilonScheduler,
+            optimizer: torch.optim.Optimizer,
+            lr_scheduler: _LRScheduler,
+            loss_fn: torch.nn.modules.loss._Loss,
+            device: torch.device
+    ):
+        """
+        Method that trains the agent on n_games.
+        """
+        for g in range(n_games):
+
+            board = Board()
+            total_loss = 0
+
+            inputs = [[], []]
+
+            player = 0
+            t = 0
+
+            while True:
+
+                # Check if the game is over
+                if board.is_final():
+                    victor = 1 - player
+                    break
+
+                # Choose the action
+                if epsilon_scheduler.random_action():
+                    action = self.move_random(board)
+                else:
+                    action = self.move(board)
+                
+                inputs[player].append(self.to_first_layer(board.board, action[0][0], action[0][1]))
+                
+                # Apply the action, get the reward and transpose the board
+                board.move(action)
+                board.transpose()
+                player = 1 - player
+
+                t += 1
+        
+            # Compute the rewards
+            total_reward = 1000 / t
+
+            # Compute the targets
+            targets = [0, 0]
+            targets[victor] = total_reward
+            targets[1 - victor] = -total_reward
+
+            # Compute the losses
+            for i in range(2):
+                inputs_tensor = torch.tensor(np.array(inputs[i]), dtype=torch.float32, device=device)
+                targets_tensor = torch.tensor(np.array([[targets[i]]]*len(inputs[i])), dtype=torch.float32, device=device)
+                q_values = self.q_network(inputs_tensor)
+                loss = loss_fn(q_values, targets_tensor)
+                total_loss += loss
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                lr_scheduler.step()
 
                    

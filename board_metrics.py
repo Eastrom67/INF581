@@ -1,4 +1,5 @@
 from board import Board
+import numpy as np
 
 def basic_score(board : Board):
         """
@@ -25,5 +26,38 @@ def basic_score(board : Board):
         board.transpose()
 
         score = white_pieces + 5 * white_queens - black_pieces - 5 * black_queens
+        
+        return score
+
+
+def q_board_metric(envi):
+        """
+        Simple evaluation function for the checkers game.
+        """
+        b = envi.board
+
+        winning_reward = 500
+        
+        men1 = np.sum((b==1))
+        men2 = np.sum((b==-1))
+        kings1 = np.sum((b==2))
+        kings2 = np.sum((b==-2))
+        
+        if men2+kings2 == 0:
+            return winning_reward
+        elif men1+kings1 == 0:
+            return -winning_reward
+            
+        men = men1-men2
+        kings = kings1-kings2
+
+        potential_moves_white = len(envi.get_allowed_moves())
+        envi.transpose()
+        potential_moves_black = len(envi.get_allowed_moves())
+        envi.transpose()
+
+        potential = potential_moves_white - potential_moves_black
+
+        score = men + 5*kings #+ potential
         
         return score

@@ -37,10 +37,14 @@ class MinimaxAgent(Agent):
         else:
             boards = [b.transpose() for b in boards]
             scores = []
+
+            v = -np.inf
             for b in boards:
                 scores.append(1000 if b.is_final() else -self.minimax(b, depth + 1, -beta, -alpha)[1])
+                v = max(v, scores[-1])
                 if scores[-1] >= beta:
                     break
+                v = max(alpha, v)
 
         best = np.argmax(scores)
 

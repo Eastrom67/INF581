@@ -9,7 +9,7 @@ import time
 gr = GameRunner()
 
 agent_A = OneStepAgent()
-agent_B = MinimaxAgent(nb_future=2)
+agent_B = MinimaxAgent(nb_future=4)
 n_games = 1
 
 # gr.run_and_show(agent_A, agent_B, console = True, gif = True)

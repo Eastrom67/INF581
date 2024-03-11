@@ -26,6 +26,18 @@ class Board:
         self.board[:nb_pieces] -= 1
         self.board[-nb_pieces:] += 1
 
+
+    def reset(self):
+
+        # Number of usable squares
+        nb_pieces = 2 * self.side
+
+        # Registering only playable squares, 0 = empty, 1 = white, -1 = black, 2 = white queen, -2 = black queen.
+        # Makes it easy to "flip" the board
+        self.board = np.array([0 for i in range(self.size)]) 
+        self.board[:nb_pieces] -= 1
+        self.board[-nb_pieces:] += 1
+
     def transpose(self):
         """
         Transposes the board.

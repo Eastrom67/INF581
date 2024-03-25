@@ -11,6 +11,7 @@ import random
 from typing import List, Tuple, Deque, Optional, Callable
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def show_board(envi):
     plt.figure()
@@ -47,7 +48,15 @@ def board_metric(envi):
         
     men = men1-men2
     kings = kings1-kings2
-    score = men + 10*kings
+
+    potential_moves_white = len(envi.get_allowed_moves())
+    envi.transpose()
+    potential_moves_black = len(envi.get_allowed_moves())
+    envi.transpose()
+
+    potential = potential_moves_white - potential_moves_black
+
+    score = men + 5*kings #+ potential
     
     return score
 
@@ -65,10 +74,10 @@ def state_to_first_layer(state):
 
 
 
-class QNetwork(torch.nn.Module):
+class naive_QNetwork(torch.nn.Module):
 
     def __init__(self, n_observations: int, n_actions: int, nn_l1: int, nn_l2: int):
-        super(QNetwork, self).__init__()
+        super(naive_QNetwork, self).__init__()
         self.layer1 = torch.nn.Linear(n_observations, nn_l1)
         self.layer2 = torch.nn.Linear(nn_l1, nn_l2)
         self.layer3 = torch.nn.Linear(nn_l2, n_actions)
@@ -150,7 +159,7 @@ def qvalues_to_best_possible_move(envi, q_values):
 
 
 
-def train_naive_agent(envi: Board,
+def train_naive_agent_turn_reward(envi: Board,
                       q_network: torch.nn.Module,
                       optimizer: torch.optim.Optimizer,
                       loss_fn: Callable,
@@ -164,7 +173,7 @@ def train_naive_agent(envi: Board,
     episode_reward_dict = {0: [], 1: []}
 
     for episode_index in range(1, num_episodes):
-        print(f"Episode {episode_index}/{num_episodes}")
+        # print(f"Episode {episode_index}/{num_episodes}")
         
         envi.reset()
         state = envi.board
@@ -286,23 +295,121 @@ def test_q_network_agent(envi, q_network: torch.nn.Module, num_episode: int = 1,
     return episode_reward_dict
 
 
+def train_naive_agent_final_reward(envi: Board,
+                      q_network: torch.nn.Module,
+                      optimizer: torch.optim.Optimizer,
+                      loss_fn: Callable,
+                      device: torch.device,
+                      lr_scheduler: _LRScheduler,
+                      epsilon_greedy: EpsilonGreedy,
+                      num_episodes: int,
+                      gamma: float,
+                      render = True) -> List[float]:
+    
+    episode_reward_dict = {0: [], 1: []}
 
+    for episode_index in range(1, num_episodes):
+        #print(f"Episode {episode_index}/{num_episodes}")
+        
+        envi.reset()
+        state = envi.board
+        done = False
+        episode_reward = [0, 0]
+        player = 0
+        action = None
+        
+        images = []
+        game_predictions = []
+        game_futur_predictions= []
+        for t in itertools.count():
+            
+            #print(f"Player {player} move")
+            
+            action = epsilon_greedy.__call__(state)
+            #print(f"Action: {action}")
+            envi.move(action)
+            
+            
+            envi.transpose()
+            sprime = envi.board
+            player = 1 - player
+            done = envi.is_final()
+            
+            predictions = q_network(torch.tensor(state_to_first_layer(state), dtype=torch.float32, device=device).unsqueeze(0))[0]
+            prediction = predictions[action[0][0]*envi.size+action[0][1]]
+            
+
+            future_predictions = q_network(torch.tensor(state_to_first_layer(sprime), dtype=torch.float32, device=device).unsqueeze(0))[0]
+            future_predictions = future_predictions.detach().cpu().numpy()
+            
+            
+            future_prediction = future_predictions[0]
+            allowed_moves = envi.get_allowed_moves()
+            for allowed_move in allowed_moves:
+                if future_predictions[allowed_move[0][0]*envi.size+allowed_move[0][1]] > future_prediction:
+                    future_prediction = future_predictions[allowed_move[0][0]*envi.size+allowed_move[0][1]]
+
+            game_predictions.append(prediction)
+            game_futur_predictions.append(torch.tensor(future_prediction, dtype=torch.float32, device=device))
+
+            state = sprime
+            
+            if render:
+                if player==0:
+                    images.append(show_board(envi))
+                else:
+                    envi.transpose()
+                    images.append(show_board(envi))
+                    envi.transpose()
+            
+            if done:
+                break
+        
+        torch.autograd.set_detect_anomaly(True)
+        reward = 1 / len(game_predictions)
+        for t in range(len(game_predictions)):
+            optimizer.zero_grad()
+            futur_prediction = game_futur_predictions[-t-1]
+            prediction = game_predictions[-t-1]
+            target = torch.tensor(reward + gamma * futur_prediction, dtype=torch.float32, device=device)
+            loss = loss_fn(prediction, target)
+            
+            
+            loss.backward(retain_graph=True)
+            reward = - reward
+        optimizer.step()
+        lr_scheduler.step()
+            
+
+            
+            
+        
+        epsilon_greedy.decay_epsilon()
+        # Create a GIF from the images
+        if render:
+            images[0].save(f'train_episode_{episode_index}.gif',
+                save_all=True, append_images=images[1:], optimize=False, duration=500, loop=0)
+    
+    return episode_reward_dict
+
+"""
 side = 10
 size = int(side**2/2) # The size of the board
 move_length = 2 # The length of a move. We do not consider longer moves for now
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-NUMBER_OF_TRAININGS = 1
+NUMBER_OF_TRAININGS = 20
 trains_result_dict = {0: [[], [], []], 1: [[], [], []]}
 
 envi = Board(side=side)
 
 for train_index in range(NUMBER_OF_TRAININGS):
+    print(f"Training {train_index}/{NUMBER_OF_TRAININGS}")
 
     # Instantiate required objects
 
-    q_network = QNetwork(5*size, size**move_length, nn_l1=128, nn_l2=128).to(device)
+    q_network = naive_QNetwork(5*size, size**move_length, nn_l1=128, nn_l2=128).to(device)
     optimizer = torch.optim.AdamW(q_network.parameters(), lr=0.004, amsgrad=True)
     #lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.999)
     lr_scheduler = MinimumExponentialLR(optimizer, lr_decay=0.97, min_lr=0.0001)
@@ -317,17 +424,19 @@ for train_index in range(NUMBER_OF_TRAININGS):
                                             device,
                                             lr_scheduler,
                                             epsilon_greedy,
-                                            num_episodes=1000,
+                                            num_episodes=100,
                                             gamma=0.9,
                                             render=False)
     
     trains_result_dict[0][0].extend(range(len(episode_reward_dict[0])))
     trains_result_dict[0][1].extend(episode_reward_dict[0])
     trains_result_dict[0][2].extend([train_index for _ in episode_reward_dict[0]])
-    
+
     trains_result_dict[1][0].extend(range(len(episode_reward_dict[1])))
     trains_result_dict[1][1].extend(episode_reward_dict[1])
     trains_result_dict[1][2].extend([train_index for _ in episode_reward_dict[1]])
+
+    torch.save(q_network, f"naive_q_network_turn_reward{str(train_index)}.pth")
 
 trains_result_df = []
 trains_result_df.append(pd.DataFrame(np.array(trains_result_dict[0]).T, columns=["num_episodes", "mean_final_episode_reward", "training_index"]))
@@ -355,3 +464,4 @@ q_network = torch.load("naive_q_network.pth").to(device)
 envi = Board(side=side)
 
 test_q_network_agent(envi, q_network, num_episode=1, render=True)
+"""
